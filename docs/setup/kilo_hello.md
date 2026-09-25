@@ -1,0 +1,5 @@
+модель: training-2026-09-minimax-m3
+
+1) Сервис: учебный carmoney-lab — предварительная оценка заявки на заём под ПТС (VIN, год, пробег, стоимость, сумма, срок), считает LTV и возвращает approve / review / reject. Все данные синтетические.
+2) Makefile: `make up` (docker compose up -d --build, сервис на :8080), `make test` (PHPUnit, локально или в контейнере backend), `make lint` (php -l по backend/ и tests/), `make down`, `make seed` (mysql < db/seed.sql), `make logs`, `make ps`, `make install`, `make help`. docker-compose.yml: сервисы `backend` (php -S 0.0.0.0:8080, порт ${APP_PORT:-8080}:8080, зависит от `db` healthy) и `db` (mysql:8.0, БД carmoney_lab, порт ${DB_PORT:-3307}:3306, init-скрипты db/schema.sql и db/seed.sql), том db-data.
+3) Папка с решением approve / review / reject: backend/src/Domain (доменные правила), пороги — в backend/config/rules.php; эндпоинты, которые его возвращают, — POST /api/ltv и POST /api/applications (см. README). Папки approve/review/reject как отдельной директории в репо не нашёл.
