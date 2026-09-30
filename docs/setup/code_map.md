@@ -51,42 +51,26 @@ flowchart TD
     A[assess payload] --> B["ApplicationValidator.validate<br/>VIN, год, пробег, сумма, срок"]
     B -->|ValidationException| X[заявка отклонена до решения]
     B -->|input| C["LtvCalculator.calculate<br/>LTV = сумма / стоимость * 100"]
-    C --> D["DecisionEngine.decide<br/>ltv &lt; 60 → approve<br/>≤ 85 → review<br/>&gt; 85 → reject"]
+    C --> D["DecisionEngine.decide(ltv, mileage)<br/>ltv < 60 → approve<br/>≤ 85 → review<br/>> 85 → reject<br/>+ mileage > 400000 → approve понижается до review"]
     D --> E["approved_limit = сумма при approve, иначе 0"]
 ```
 
-## Гипотетическое правило «пробег > 400 000 → review»
+## Правило «пробег > 400 000 → review»
 
-Это правило **решения**, а не валидации, поэтому его место — в
-`DecisionEngine::decide()`, рядом с LTV-проверками (например, после LTV-веток:
-если пробег больше порога — не `approve`). Но по коду есть зазор: сейчас
-`decide(float $ltv)` принимает **только LTV**, и конструктор `DecisionEngine`
-получает только `rules['ltv']` (AppFactory.php:37). Пробег до него не доходит,
-хотя в `AssessmentService::assess()` он уже лежит в `$input['mileage']`
-(строка 33 — точка, где его нужно передать).
+Это правило **решения**, а не валидации. Живёт в `DecisionEngine`:
 
-**Что уже есть:**
+- ключ справочника: `backend/config/rules.php` → `vehicle.review_mileage_km = 400000`
+  (рядом с валидационным `max_mileage_km = 500000`, но это **другая** граница —
+  валидационная);
+- проводка: `AppFactory.php:37` передаёт значение порога вторым аргументом в
+  конструктор `new DecisionEngine($rules['ltv'], $rules['vehicle']['review_mileage_km'])`;
+- сигнатура `DecisionEngine::decide(float $ltv, int $mileage): string` —
+  пробег передаётся из `AssessmentService::assess()` строкой 33;
+- приоритет: понижается **только** `approve`; `review` и `reject` не меняются.
 
-- `mileage` — валидированное `int` в `$input` (ApplicationValidator.php:43–46, 78),
-  доступно в `assess()`;
-- константа `DecisionEngine::REVIEW`;
-- конвенция «числа в `rules.php`», а не в коде — место для нового порога готово
-  структурно.
-
-**Чего не хватает:**
-
-- передачи mileage в `DecisionEngine` — придётся расширить сигнатуру `decide()`
-  (и/или конструктор) либо передавать туда весь input;
-- ключа в `rules.php` с порогом 400 000 — сейчас есть только
-  `max_mileage_km = 500 000`, и это **другая** граница (валидационная);
-- приоритета правил: в коде нет механизма комбинирования, и неопределено, что
-  делать, если LTV говорит `reject`, а пробег — `review` (кто кого перекрывает).
-  Сейчас это «нет» — движок решения чисто LTV-шный, его докблок так и заявляет:
-  «Решение по заявке на основании LTV».
-
-Важная деталь взаимодействия: пробег **больше 500 000** вообще не доходит до
-решения — его отсекает валидация с `ValidationException`. Поэтому новое правило
-фактически сработает только в диапазоне 400 000 < пробег <= 500 000.
+Фактический диапазон действия правила — `400 000 < пробег <= 500 000`:
+выше 500 000 заявку отсекает валидация (`ValidationException`, ключ `mileage`),
+правило до решения не доходит.
 
 ## Что сейчас проверяется про пробег
 
